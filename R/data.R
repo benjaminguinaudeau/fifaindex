@@ -1,1 +1,2 @@
-usethis::use_data("data/id_2019.Rdata")
+#ids <- get(load("data/id_2019.Rdata"))
+#usethis::use_data(ids)
