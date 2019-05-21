@@ -103,6 +103,8 @@ get_data <- function(url){
 get_player_link <- function(player_id){
   url <- glue::glue("https://www.fifaindex.com/player/{ player_id }/")
   
+  if(rvest::html_session(url)$response$status_code == 404) return(NULL)
+    
   out <- xml2::read_html(url) %>%
     rvest::html_nodes(".dropdown-item") %>%
     rvest::html_attr("href") %>%
@@ -114,7 +116,12 @@ get_player_link <- function(player_id){
 
 #' @export
 get_player_stats <- function(player_id, year = NULL){
-  urls <- get_player_link(player_id)
+  urls <- suppressWarnings(get_player_link(player_id))
+  
+  if(is.null(urls)){
+    message(glue::glue("Player: {player_id} \t|  0 years\n"))
+    return(tibble(player_id, period = NA))
+  }
   
   if(!is.null(year)){
     periods <- get_period() %>%
@@ -125,13 +132,12 @@ get_player_stats <- function(player_id, year = NULL){
       dplyr::pull(period)
   }
   
-  
   period <- urls %>% 
     stringr::str_extract("\\d+(?=/$)") 
   
   message(glue::glue("Player: {player_id} \t|  {sum(period %in% periods)} years\n"))
   
-  pb <- dplyr::progress_estimated(length(period[!is.na(period)]))
+  get_data_pos <- purrr::possibly(get_data, otherwise = tibble(team = NA))
   
   out <- tibble::tibble(urls, period, player_id) %>%
     dplyr::filter(period %in% periods) %>%
