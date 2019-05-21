@@ -39,11 +39,20 @@ sample_ids <- c(
 ```
 
 ```{r}
-sample_data <- sample_ids %>%
-  future_map(get_player_stats, .progress = T)
+
+
+library(tidyverse)
 
 player <- get_player_stats(player_id = 214977, year = 2019) 
 player <- get_player_stats(player_id = 239070) 
+
+ids <- fifaindex::ids
+
+ids %>%
+  sample(10) %>%
+  future_map(get_player_stats, .progress = T)
+  reduce(bind_rows)
+
 
 
 
