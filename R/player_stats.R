@@ -15,6 +15,34 @@ get_stats <- function(cards){
 }
 
 #' @export
+parse_rating <- function(p){
+  if(length(rvest::html_node(p,".star")) != 0) return(NULL)
+  
+  value  <- p %>%
+    rvest::html_node(".rating") %>%
+    rvest::html_text(.)
+  
+  junk <- p %>%
+    xml2::xml_children() %>%
+    #rvest::html_nodes("span") %>%
+    rvest::html_text(.) %>%
+    paste(collapse = " ")
+  
+  
+  name <- p %>%
+    rvest::html_text(.) %>%
+    paste(collapse = " ") %>%
+    stringr::str_remove(stringr::fixed(junk)) %>%
+    stringr::str_trim(.)
+  
+  out <- tibble::tibble(name, value) %>%
+    tidyr::spread(name, value) %>%
+    janitor::clean_names(.)
+  
+  return(out)
+}
+
+#' @export
 get_stats_card <- function(card, header){
   stat <- card %>%
     rvest::html_node(".card-body") %>%
@@ -22,22 +50,26 @@ get_stats_card <- function(card, header){
     purrr::map_chr(rvest::html_text)
   
   if(stringr::str_detect(stat, "\\s+\\d+$")[1]){
-    name <- stat %>%
-      stringr::str_remove("\\s+\\d+$") %>%
-      paste(header, ., sep = "_")
+    p <- card %>%
+      rvest::html_node(".card-body") %>%
+      rvest::html_nodes("p")
     
-    value <- stat %>%
-      stringr::str_extract("\\d+$")
+    out <- p %>% 
+      map_dfc(parse_rating) %>%
+      rename_all(~paste(header, .x, sep = "_")) %>%
+      janitor::clean_names(.)
+    
   } else {
     name <- header
     value <- stat %>%
       paste(collapse = "|")
+    
+    out <- tibble::tibble(name, value) %>%
+      #rowid_to_column() %>%
+      tidyr::spread(name, value) %>%
+      janitor::clean_names(.)
+    
   }
-  
-  out <- tibble::tibble(name, value) %>%
-    #rowid_to_column() %>%
-    tidyr::spread(name, value) %>%
-    janitor::clean_names(.)
   
   return(out)
 }
@@ -47,12 +79,15 @@ parse_meta <- function(p){
   if(length(rvest::html_node(p,".star")) != 0) return(NULL)
   
   value <- p %>%
-    rvest::html_node("span") %>%
-    rvest::html_text(.)
+    xml2::xml_children() %>%
+    #rvest::html_nodes("span") %>%
+    rvest::html_text(.) %>%
+    paste(collapse = " ")
   
   
   name <- p %>%
     rvest::html_text(.) %>%
+    paste(collapse = " ") %>%
     stringr::str_remove(stringr::fixed(value)) %>%
     stringr::str_trim(.)
   
@@ -142,8 +177,7 @@ get_player_stats <- function(player_id, year = NULL){
   out <- tibble::tibble(urls, period, player_id) %>%
     dplyr::filter(period %in% periods) %>%
     tidyr::drop_na(.) %>%
-    dplyr::mutate(data = urls %>% purrr::map(get_data)) %>%
-    tidyr::unnest(data)
+    dplyr::mutate(data = urls %>% purrr::map(get_data))
   
   return(out)
 }
