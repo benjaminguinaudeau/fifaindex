@@ -82,7 +82,8 @@ parse_meta <- function(p){
     xml2::xml_children() %>%
     #rvest::html_nodes("span") %>%
     rvest::html_text(.) %>%
-    paste(collapse = " ")
+    paste(collapse = " ") %>%
+    stringr::str_trim(.)
   
   
   name <- p %>%
@@ -102,6 +103,28 @@ parse_meta <- function(p){
 get_data <- function(url){
   
   page <- xml2::read_html(url)
+  
+  player_name <- page %>%
+    rvest::html_nodes("h1") %>%
+    rvest::html_text(.) %>%
+    tibble::tibble(player_name = .)
+  
+  country_div <- page %>%
+    rvest::html_nodes("h2") %>%
+    map(rvest::html_nodes, "a") %>%
+    purrr::compact(.) %>%
+    .[[1]]
+    
+  country <- country_div %>%
+    rvest::html_text(.) %>%
+    purrr::discard(~.x == "") %>%
+    tibble::tibble(country = .)
+  
+  country_id <- country_div %>%
+    rvest::html_attr("href") %>%
+    unique %>%
+    stringr::str_extract("\\d+$") %>%
+    tibble::tibble(country_id = .)
   
   period_date <- page %>%
     rvest::html_nodes(".dropdown-toggle") %>%
@@ -124,12 +147,19 @@ get_data <- function(url){
     rvest::html_nodes("p") %>%
     purrr::map_dfc(parse_meta)
   
+  team_link <- cards[[3]] %>%
+    rvest::html_node(".card-header") %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_attr("href") %>%
+    unique %>%
+    tibble::tibble(team_link = .)
+  
   team_name <- get_header(cards[[3]]) %>%
     tibble::tibble(team = .)
   
   stats <- get_stats(cards)
   
-  out <- dplyr::bind_cols(meta, period_date, team_name, team, stats)
+  out <- dplyr::bind_cols(player_name, country, country_id, meta, period_date, team_name, team_link, team, stats)
   
   return(out)
 }

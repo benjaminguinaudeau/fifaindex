@@ -8,12 +8,15 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-library(dplyr)
-library(furrr)
+pacman::p_load(tidyverse, furrr, fifaindex)
 
 ```
 
+# To do
++ add link to league and team for ids
+
 ```{r}
+#devtools::install_github(benjaminguinaudeau/fifaindex)
 pacman::p_load(tidyverse, furrr, fifaindex)
 plan(multiprocess, workers = 2)
 
@@ -31,23 +34,163 @@ ids <- fifaindex::ids
 sample <- ids %>%
   sample(10)
 
-sample_stats_1 <- sample %>%
-  .[1] %>%
-  map(get_player_stats)
-  #future_map(get_player_stats, .progress = T)
-
-sample_stats_1  %>%
-  reduce(bind_rows) %>%
-  unnest(data)
-
 sample_stats <- sample %>%
-  .[1] %>%
-  #map(get_player_stats)
-  future_map(get_player_stats, .progress = T)  
-  
+  map(get_player_stats)
+#future_map(get_player_stats, .progress = T)
+
 sample_stats  %>%
   reduce(bind_rows) %>%
   unnest(data)
+
+```
+
+```{r}
+plan(multiprocess, workers = 2)
+
+get_all_existing_ids <- function(potential_ids = 1:250000){
+  
+  all_ids <- tibble::tibble(potential_ids) %>%
+    #slice(1:20) %>%
+    mutate(url = glue::glue("https://www.fifaindex.com/player/{ potential_ids }/")) %>%
+    mutate(exists = url %>% future_map_lgl(~{
+      rvest::html_session(.x)$response$status_code != 404
+    }, .progress = T)) %>%
+    select(-url)
+  
+  return(all_ids)
+}
+
+all_ids <- get_all_existing_ids()
+
+```
+
+# Get_all_leagues
+
+```{r}
+league_ids <- get_all_league_ids()
+
+save(league_ids, file = "data/potential_league_id.Rdata")
+league_ids <- league_ids %>%
+  filter(exists) %>%
+  pull(potential_ids)
+
+save(league_ids, file = "data/league_ids.Rdata")
+
+```
+
+```{r}
+load("data/league_ids.Rdata")
+
+league_data <-  league_ids %>%
+  imap(~{print(.y);get_league(.x)})
+
+league_data <- league_data %>%
+  reduce(bind_rows) %>%
+  select(-x, -team_rating) %>%
+  mutate(team_link = paste0("https://www.fifaindex.com", team_link)) %>%
+  mutate(league_id = url %>% str_extract("(?<=league\\=)\\d+") %>% as.numeric) %>%
+  mutate(year = str_extract(period_date, "\\d+")) %>%
+  glimpse %>%
+  select(league_id, league, year, name, team_id, att, mid, def, ovr) %>%
+  glimpse
+
+league_data %>%
+  filter(str_detect(name, "Bayern"))
+  glimpse
+
+fifa_monks_dict <- tribble(
+  ~fifa_id, ~monks_id,
+  1, 271,
+  4, 208,
+  7, NA,
+  10, 72,
+  13, 8,
+  14, 9, 
+  16, 301,
+  17, NA,
+  19, 82,
+  20,NA,
+  31, 384,
+  32, NA,
+  39, NA,
+  41, 404,
+  50, 501,
+  53, 564,
+  54, NA,
+  56, 573,
+  60, 12,
+  61, NA,
+  65, NA,
+  66, NA,
+  68, 600,
+  76, NA,
+  80, 181,
+  83, NA,
+  189, NA,
+  308, 462,
+  335, NA,
+  336,NA,
+  341, NA,
+  349, NA,
+  350, NA,
+  351, NA,
+  353, NA,
+  382,  NA,
+  2012, NA,
+  2076, NA)
+
+league_data <- league_data %>%
+  left_join(fifa_monks_dict, by = c("league_id" = "fifa_id")) %>%
+  filter(!is.na(monks_id)) %>%
+  glimpse
+
+league_data %>%
+  glimpse
+
+save(league_data, file = "data/league_data.Rdata")
+```
+
+```{r}
+load("data/league_data.Rdata")
+load("data/league_teams.Rdata")
+league_data %>%
+  count(name, sort = T)
+
+monks_data <- league_teams %>%
+  select(-national_team, -founded, -logo_path) %>% 
+  filter(league_id %in% league_data$monks_id) %>%
+  nest(-league_id)
+  glimpse
+
+test <- league_data %>%
+  nest(-monks_id) %>%
+  left_join(monks_data, c("monks_id" = "league_id")) %>%
+  mutate(output = map2(data.x, data.y,~{
+    
+  }))
+.x <- test$data.x[[1]] %>%
+  select(team_name = name) %>%
+  mutate(long_word = team_name %>% str_split(" ") %>% map_chr(longest)) %>%
+  mutate(id = 1:nrow(.))
+.y <- test$data.y[[1]] %>%
+  select(team_name) %>%
+  mutate(long_word = team_name %>% str_split(" ") %>% map_chr(longest)) %>%
+  mutate(id_ = "a")
+
+.x %>% glimpse
+.y %>% glimpse
+
+longest <- function(char){
+  tibble(x = char) %>%
+    mutate(len = str_length(x)) %>%
+    arrange(-len) %>%
+    slice(1) %>%
+    pull(x)
+}
+
+```
+
+```{r}
 
 ```
 
