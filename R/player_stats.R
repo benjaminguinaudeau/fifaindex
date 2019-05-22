@@ -109,6 +109,7 @@ get_data <- function(url){
     rvest::html_text(.) %>%
     tibble::tibble(player_name = .)
   
+
   country_div <- page %>%
     rvest::html_nodes("h2") %>%
     map(rvest::html_nodes, "a") %>%
@@ -142,6 +143,14 @@ get_data <- function(url){
     rvest::html_nodes("p") %>%
     purrr::map_dfc(parse_meta)
   
+  ratings <- cards[[2]] %>%
+    rvest::html_nodes(".rating") %>%
+    rvest::html_text(.) %>%
+    map2_dfc(c("overall_rating", "potential_rating"),~{
+      #print(.x)
+      tibble::tibble(.x) %>% purrr::set_names(.y)
+      }) 
+
   team <- cards[[3]] %>%
     rvest::html_node(".card-body") %>%
     rvest::html_nodes("p") %>%
@@ -159,7 +168,7 @@ get_data <- function(url){
   
   stats <- get_stats(cards)
   
-  out <- dplyr::bind_cols(player_name, country, country_id, meta, period_date, team_name, team_link, team, stats)
+  out <- dplyr::bind_cols(player_name, ratings, country, country_id, meta, period_date, team_name, team_link, team, stats)
   
   return(out)
 }
@@ -185,7 +194,7 @@ get_player_stats <- function(player_id, year = NULL){
   
   if(is.null(urls)){
     message(glue::glue("Player: {player_id} \t|  0 years\n"))
-    return(tibble(player_id, period = NA))
+    return(tibble::tibble(player_id, period = NA))
   }
   
   if(!is.null(year)){
@@ -202,7 +211,7 @@ get_player_stats <- function(player_id, year = NULL){
   
   message(glue::glue("Player: {player_id} \t|  {sum(period %in% periods)} years\n"))
   
-  get_data_pos <- purrr::possibly(get_data, otherwise = tibble(team = NA))
+  get_data_pos <- purrr::possibly(get_data, otherwise = tibble::tibble(team = NA))
   
   out <- tibble::tibble(urls, period, player_id) %>%
     dplyr::filter(period %in% periods) %>%

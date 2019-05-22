@@ -35,7 +35,7 @@ sample <- ids %>%
   sample(10)
 
 sample_stats <- sample %>%
-  map(get_player_stats)
+  map(~{get_player_stats(.x, 2015:2019)},.progress = T)
 #future_map(get_player_stats, .progress = T)
 
 sample_stats  %>%
