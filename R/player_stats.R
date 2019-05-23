@@ -162,7 +162,7 @@ get_data <- function(url){
     rvest::html_attr("href") %>%
     unique %>%
     tibble::tibble(team_link = .)
-  if(nrow(team_link) == 0) team_link <- tibble(team_link = NA)
+  if(nrow(team_link) == 0) team_link <- tibble::tibble(team_link = NA)
   
   team_name <- get_header(cards[[3]]) %>%
     tibble::tibble(team = .)
