@@ -1,0 +1,163 @@
+---
+title: "leagues"
+author: "Benjamin"
+date: '2019-05-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse, furrr, fifaindex)
+
+plan(multiprocess, workers = 2)
+
+source("R/league_helpers.R")
+```
+
+# Get_all_leagues
+
+## Get all league_id
+
+```{r}
+league_ids <- get_all_league_ids()
+
+save(league_ids, file = "data/league/potential_league_id.Rdata")
+league_ids <- league_ids %>%
+  filter(exists) %>%
+  pull(potential_ids)
+
+save(league_ids, file = "data/league/league_ids.Rdata")
+
+```
+
+### Get each league
+
+```{r}
+load("data/league/league_ids.Rdata")
+
+league_data <-  league_ids %>%
+  imap(~{print(.y);get_league(.x)})
+
+league_data <- league_data %>%
+  reduce(bind_rows) %>%
+  select(-x, -team_rating) %>%
+  mutate(team_link = paste0("https://www.fifaindex.com", team_link)) %>%
+  mutate(league_id = url %>% str_extract("(?<=league\\=)\\d+") %>% as.numeric) %>%
+  mutate(year = str_extract(period_date, "\\d+")) %>%
+  glimpse %>%
+  select(league_id, league, year, name, team_id, att, mid, def, ovr) %>%
+  left_join(fifa_monks_dict, by = c("league_id" = "fifa_id")) %>%
+  filter(!is.na(monks_id)) %>%
+  glimpse
+
+save(league_data, file = "data/league/league_data.Rdata")
+```
+
+# Merge with monks
+
+```{r}
+load("data/league/league_data.Rdata")
+load("data/league/league_teams.Rdata")
+```
+
+## Transform data from monks
+
+```{r}
+# Number of teams
+league_data %>%
+  count(name, sort = T)
+
+monks_data <- league_teams %>%
+  select(-national_team, -logo_path) %>% 
+  mutate(longest =  longest(team_name)) %>%
+  filter(league_id %in% unique(league_data$monks_id)) %>%
+  select(league_id, team_id, team_name, short_code, longest, 
+         monks_country_id = country_id, founded, monks_venue_id = venue_id, twitter) %>%
+  distinct %>%
+  glimpse
+```
+
+## Fix names issues in fifa data
+
+```{r}
+prep_league_data <- league_data %>%
+  filter(year > 2014) %>%
+  distinct(league_id, league, monks_id, name, team_id) %>%
+  mutate(name = fix_team_names(name, league_id)) %>%
+  filter(name != "") %>%
+  glimpse()
+
+```
+
+## Join fifa and monks
+
+```{r}
+joined_data <- prep_league_data %>%
+  left_join(monks_data, c("monks_id" = "league_id", 
+                          "name" = "team_name")) %>%
+  split(is.na(.$team_id.y)) %>%
+  imap_dfr(~{
+    if(.y == "FALSE") return(.x)
+    
+    .x %>%
+      select(league_id, league, monks_id, name, team_id = team_id.x) %>%
+      mutate(longest =  longest(name)) %>%
+      left_join(monks_data, c("monks_id" = "league_id", 
+                              "longest" = "longest")) %>%
+      select(-team_name)
+  }) %>%
+  select(fifa_league_id = league_id, monks_league_id = monks_id,
+         league,
+         fifa_team_id = team_id.x, monks_team_id = team_id.y, 
+         -longest,
+         everything()
+         ) 
+
+# Get those that were not joined
+not_joined <- joined_data %>% #1136
+  filter(is.na(monks_team_id))
+
+# Find the monks league data given a fifa league_id
+joined_data %>%
+  filter(league_id %in% c(308)) %>%
+  count(league_id, monks_id) %>% 
+  filter(league_id %in% monks_league$monks_id) %>%
+  left_join(monks_league, by = c("league_id" = "monks_id")) %>%
+  arrange(league_id.y) %>%
+  select(league_id, league_id.y, everything())
+
+```
+
+```{r}
+fifa_monks_team_dic <- joined_data %>%
+  select(fifa_team_id, monks_team_id, fifa_league_id, monks_league_id) %>%
+  unique
+
+save(fifa_monks_team_dic, file = "data/league/fifa_monks_team_dic.Rdata")
+```
+
+```{r}
+fifa_league_data <- league_data %>%
+  rename(fifa_team_id = team_id, fifa_league_id = league_id) %>%
+  left_join(fifa_monks_team_dic, by = c("fifa_team_id", "fifa_league_id")) %>%
+  #rename()
+  left_join(league_teams, by = c("monks_team_id" = "team_id", 
+                                 "monks_league_id" = "league_id")) %>%
+  unique %>%
+  select(fifa_league_id, monks_league_id,
+         league, year,
+         fifa_team_id, monks_team_id, 
+         team_name, fifa_team_name = name,
+         ovr, att, mid, def,
+         country_id, founded, venue_id = venue_id,
+         everything(),
+         -national_team, -logo_path, -legacy_id, -current_season_id, -monks_id 
+         ) 
+
+fifa_league_data %>%
+  glimpse
+save(fifa_league_data, file = "data/league/fifa_league_data.Rdata")
+  
+```
+

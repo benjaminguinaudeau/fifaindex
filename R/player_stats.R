@@ -55,8 +55,8 @@ get_stats_card <- function(card, header){
       rvest::html_nodes("p")
     
     out <- p %>% 
-      map_dfc(parse_rating) %>%
-      rename_all(~paste(header, .x, sep = "_")) %>%
+      purrr::map_dfc(parse_rating) %>%
+      dplyr::rename_all(~{paste(header, .x, sep = "_")}) %>%
       janitor::clean_names(.)
     
   } else {
@@ -162,6 +162,7 @@ get_data <- function(url){
     rvest::html_attr("href") %>%
     unique %>%
     tibble::tibble(team_link = .)
+  if(nrow(team_link) == 0) team_link <- tibble(team_link = NA)
   
   team_name <- get_header(cards[[3]]) %>%
     tibble::tibble(team = .)
@@ -197,9 +198,11 @@ get_player_stats <- function(player_id, year = NULL){
     return(tibble::tibble(player_id, period = NA))
   }
   
+  
   if(!is.null(year)){
+    year_to_include <- as.numeric(year)
     periods <- get_period() %>%
-      dplyr::filter(year %in% as.numeric(!!year)) %>%
+      dplyr::filter(year %in% year_to_include) %>%
       dplyr::pull(period)
   } else {
     periods <- get_period() %>%
@@ -220,3 +223,4 @@ get_player_stats <- function(player_id, year = NULL){
   
   return(out)
 }
+ 
